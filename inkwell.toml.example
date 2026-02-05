@@ -1,0 +1,14 @@
+# Inkwell configuration
+# Copy this file to your config directory:
+#   Linux/macOS: ~/.config/inkwell/inkwell.toml
+#   Windows:     %APPDATA%\inkwell\inkwell.toml
+
+[download]
+# output_dir = "~/Books"
+rate_limit = 1.0          # seconds between requests
+max_retries = 3
+timeout = 30.0
+
+[epub]
+include_images = true
+include_cover = true
