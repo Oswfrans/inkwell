@@ -21,6 +21,7 @@ dependencies = [
     "tenacity",
     "platformdirs",
     "anyio",
+    "curl-cffi>=0.14.0",
 ]
 
 [project.scripts]
