@@ -1,4 +1,7 @@
-"""Royal Road site handler."""
+"""Royal Road site handler.
+
+Uses curl_cffi to bypass Cloudflare protection.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +9,9 @@ import re
 from datetime import datetime, timezone
 from typing import ClassVar
 
+import anyio
 from bs4 import BeautifulSoup, Tag
+from curl_cffi import requests as cf_requests
 from loguru import logger
 
 from inkwell.core.models import (
@@ -17,7 +22,7 @@ from inkwell.core.models import (
     StoryMetadata,
     StoryStatus,
 )
-from inkwell.exceptions import ParseError
+from inkwell.exceptions import NetworkError, ParseError
 from inkwell.sites import SiteHandler, register
 
 
@@ -26,8 +31,22 @@ class RoyalRoadHandler(SiteHandler):
     site_name: ClassVar[str] = "Royal Road"
     url_patterns: ClassVar[list[str]] = ["royalroad.com"]
 
+    async def _fetch(self, url: str) -> str:
+        """Fetch a URL using curl_cffi to bypass Cloudflare."""
+        response = await anyio.to_thread.run_sync(
+            lambda: cf_requests.get(url, impersonate="chrome", timeout=30)
+        )
+        if response.status_code != 200:
+            raise NetworkError(f"HTTP {response.status_code} for {url}")
+        return response.text
+
     def _normalize_fiction_url(self, url: str) -> str:
         """Extract the base fiction URL from any Royal Road URL."""
+        # Capture the full fiction URL including slug, but not chapter paths
+        match = re.search(r"(https?://www\.royalroad\.com/fiction/\d+/[^/]+)", url)
+        if match:
+            return match.group(1)
+        # Fallback: just capture /fiction/<digits>
         match = re.search(r"(https?://www\.royalroad\.com/fiction/\d+)", url)
         if match:
             return match.group(1)
@@ -35,8 +54,8 @@ class RoyalRoadHandler(SiteHandler):
 
     async def get_metadata(self, url: str) -> StoryMetadata:
         url = self._normalize_fiction_url(url)
-        response = await self.client.get(url)
-        soup = BeautifulSoup(response.text, "lxml")
+        html = await self._fetch(url)
+        soup = BeautifulSoup(html, "lxml")
 
         title_tag = soup.select_one("h1.font-white")
         title = title_tag.get_text(strip=True) if title_tag else "Unknown"
@@ -101,8 +120,8 @@ class RoyalRoadHandler(SiteHandler):
         url = self._normalize_fiction_url(url)
         meta = await self.get_metadata(url)
 
-        response = await self.client.get(url)
-        soup = BeautifulSoup(response.text, "lxml")
+        html = await self._fetch(url)
+        soup = BeautifulSoup(html, "lxml")
 
         chapter_rows = soup.select("table#chapters tbody tr[data-url]")
         chapters = []
@@ -143,8 +162,8 @@ class RoyalRoadHandler(SiteHandler):
         return Story(metadata=meta, chapters=chapters)
 
     async def get_chapter(self, url: str) -> Chapter:
-        response = await self.client.get(url)
-        soup = BeautifulSoup(response.text, "lxml")
+        html = await self._fetch(url)
+        soup = BeautifulSoup(html, "lxml")
 
         title_tag = soup.select_one("h1.font-white")
         title = title_tag.get_text(strip=True) if title_tag else "Chapter"
