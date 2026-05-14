@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Optional
 
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -21,7 +22,7 @@ class ImageRef(BaseModel):
     url: str
     filename: str
     media_type: str = "image/jpeg"
-    data: bytes | None = None
+    data: Optional[bytes] = None
 
 
 class ChapterStatus(str, Enum):
@@ -39,7 +40,7 @@ class Chapter(BaseModel):
     url: str
     html_content: str = ""
     word_count: int = 0
-    date_published: datetime | None = None
+    date_published: Optional[datetime] = None
     images: list[ImageRef] = Field(default_factory=list)
     status: ChapterStatus = ChapterStatus.PENDING
 
@@ -51,14 +52,14 @@ class StoryMetadata(BaseModel):
     author: str
     url: str
     summary: str = ""
-    cover_url: str | None = None
+    cover_url: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
     language: str = "en"
     status: StoryStatus = StoryStatus.UNKNOWN
     chapter_count: int = 0
     word_count: int = 0
-    date_published: datetime | None = None
-    date_updated: datetime | None = None
+    date_published: Optional[datetime] = None
+    date_updated: Optional[datetime] = None
     site_name: str = ""
     story_id: str = ""
 

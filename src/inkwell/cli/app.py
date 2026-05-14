@@ -21,7 +21,7 @@ from inkwell.cli.display import (
     print_success,
     print_warning,
 )
-from inkwell.core.cache import get_completed_urls, list_incomplete, save_state
+from inkwell.core.cache import list_incomplete, load_story_state, save_state
 from inkwell.core.config import Config, cache_dir, config_dir
 from inkwell.core.models import ChapterStatus
 from inkwell.exceptions import InkwellError
@@ -81,20 +81,40 @@ async def _download_story(
         if dry_run:
             return
 
-        # Get completed chapters for resume
-        completed = get_completed_urls(url) if resume else set()
-        if completed:
-            print_warning(f"Resuming: {len(completed)} chapters already downloaded")
+        # Get cached story for resume
+        cached_story = load_story_state(url) if resume else None
+        if cached_story:
+            completed = {ch.url for ch in cached_story.chapters if ch.status == ChapterStatus.DOWNLOADED}
+            if completed:
+                print_warning(f"Resuming: {len(completed)} chapters already downloaded")
 
         # Download story
         story = await handler.get_story(url, offset=offset, limit=limit)
+
+        # Merge cached chapter data into fresh story
+        if cached_story:
+            cached_map = {ch.url: ch for ch in cached_story.chapters}
+            for chapter in story.chapters:
+                if chapter.url in cached_map and cached_map[chapter.url].status == ChapterStatus.DOWNLOADED:
+                    cached = cached_map[chapter.url]
+                    chapter.html_content = cached.html_content
+                    chapter.word_count = cached.word_count
+                    chapter.images = cached.images
+                    chapter.status = ChapterStatus.DOWNLOADED
 
         # Download chapters with progress
         with create_progress() as progress:
             task = progress.add_task("Downloading chapters", total=len(story.chapters))
             for chapter in story.chapters:
-                if chapter.url in completed:
-                    chapter.status = ChapterStatus.DOWNLOADED
+                if chapter.status == ChapterStatus.DOWNLOADED:
+                    # Re-download images if needed for resumed chapters
+                    if config.epub.include_images:
+                        for img in chapter.images:
+                            if not img.data:
+                                try:
+                                    img.data = await dl.get_bytes(img.url)
+                                except Exception as exc:
+                                    logger.warning(f"Failed to download image {img.url}: {exc}")
                     progress.advance(task)
                     continue
                 try:
